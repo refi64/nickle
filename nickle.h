@@ -6,18 +6,16 @@
 #ifndef NICKLE_H
 #define NICKLE_H
 
-
+#include <cinttypes>
 #include <cstdlib>
 #include <cstring>
-#include <cinttypes>
+#include <limits>
 #include <string>
 #include <type_traits>
 #include <vector>
 
-
 static_assert(!std::is_unsigned_v<int>);
 static_assert(sizeof(int) == 4);
-
 
 namespace nickle {
 
@@ -33,9 +31,7 @@ struct MutableByteSpan {
   std::byte* data;
   PickleSize len;
 
-  operator ConstByteSpan() {
-    return {data, len};
-  }
+  operator ConstByteSpan() { return {data, len}; }
 };
 
 namespace safe_math {
@@ -58,30 +54,28 @@ inline PickleSize PickleSizePadding(PickleSize size) {
 namespace buffers {
 
   class SizedBuffer {
-  public:
-    virtual PickleSize payload_size() const=0;
+   public:
+    virtual PickleSize payload_size() const = 0;
   };
 
   class WritableBuffer {
-  public:
-    virtual bool Write(ConstByteSpan span)=0;
+   public:
+    virtual bool Write(ConstByteSpan span) = 0;
   };
 
   class ReadableBuffer {
-  public:
-    virtual bool Read(MutableByteSpan span)=0;
+   public:
+    virtual bool Read(MutableByteSpan span) = 0;
   };
 
   template <typename ContainerType>
   class ReadOnlyContainerBuffer : public SizedBuffer, public ReadableBuffer {
     static_assert(sizeof(typename ContainerType::value_type) == 1);
 
-  public:
-    ReadOnlyContainerBuffer(const ContainerType& container): container_(container) {}
+   public:
+    ReadOnlyContainerBuffer(const ContainerType& container) : container_(container) {}
 
-    PickleSize offset() const {
-      return offs_;
-    }
+    PickleSize offset() const { return offs_; }
 
     PickleSize payload_size() const final {
       return reinterpret_cast<const Header*>(container_.data())->payload_size;
@@ -110,21 +104,21 @@ namespace buffers {
       return true;
     }
 
-  protected:
+   protected:
     PickleSize offs_ = sizeof(Header);
 
-  private:
+   private:
     const ContainerType& container_;
   };
 
   template <typename ContainerType>
   class ContainerBuffer final : public ReadOnlyContainerBuffer<ContainerType>,
-                                 public WritableBuffer {
+                                public WritableBuffer {
     static_assert(sizeof(typename ContainerType::value_type) == 1);
 
-  public:
-    ContainerBuffer(ContainerType* target):
-        ReadOnlyContainerBuffer<ContainerType>(*target), target_(target) {
+   public:
+    ContainerBuffer(ContainerType* target)
+        : ReadOnlyContainerBuffer<ContainerType>(*target), target_(target) {
       if (target_->size() < sizeof(Header)) {
         target_->resize(sizeof(Header));
       }
@@ -151,20 +145,18 @@ namespace buffers {
         target_->resize(expanded);
       }
 
-      std::memcpy(reinterpret_cast<std::byte*>(target_->data() + this->offs_), span.data,
-                  span.len);
+      std::memcpy(reinterpret_cast<std::byte*>(target_->data() + this->offs_), span.data, span.len);
       std::memset(reinterpret_cast<std::byte*>(target_->data() + this->offs_ + span.len), 0,
                   padding);
       this->offs_ = expanded;
       return true;
     }
 
-  private:
+   private:
     ContainerType* target_;
   };
 
 }  // namespace buffers
-
 
 namespace codecs {
 
@@ -215,8 +207,7 @@ namespace codecs {
     }
   };
 
-  template <typename T,
-            T min = std::numeric_limits<T>::min(),
+  template <typename T, T min = std::numeric_limits<T>::min(),
             T max = std::numeric_limits<T>::max()>
   struct BoundedIntegral : Base<T> {
     static bool WriteToBuffer(buffers::WritableBuffer* buffer, T value) {
@@ -236,13 +227,12 @@ namespace codecs {
     }
   };
 
-  template <typename Enum,
-            typename Underlying = std::underlying_type_t<Enum>,
+  template <typename Enum, typename Underlying = std::underlying_type_t<Enum>,
             Enum min = static_cast<Enum>(std::numeric_limits<Underlying>::min()),
             Enum max = static_cast<Enum>(std::numeric_limits<Underlying>::max())>
   struct Enumerated : Base<Enum> {
-    using UnderlyingCodec = BoundedIntegral<Underlying, static_cast<Underlying>(min),
-                                            static_cast<Underlying>(max)>;
+    using UnderlyingCodec =
+        BoundedIntegral<Underlying, static_cast<Underlying>(min), static_cast<Underlying>(max)>;
 
     static bool WriteToBuffer(buffers::WritableBuffer* buffer, Enum value) {
       return UnderlyingCodec::WriteToBuffer(buffer, static_cast<Underlying>(value));
@@ -284,9 +274,9 @@ namespace codecs {
   template <typename ViewType>
   struct IntegralView : Base<ViewType> {
     static bool WriteToBuffer(buffers::WritableBuffer* buffer, ViewType value) {
-      ConstByteSpan span{reinterpret_cast<const std::byte*>(value.data()),
-                         static_cast<PickleSize>(value.size()
-                          * sizeof(typename ViewType::value_type))};
+      ConstByteSpan span{
+          reinterpret_cast<const std::byte*>(value.data()),
+          static_cast<PickleSize>(value.size() * sizeof(typename ViewType::value_type))};
       return SizedSpanEncoder::WriteToBuffer(buffer, std::move(span));
     }
   };
@@ -307,9 +297,9 @@ namespace codecs {
       }
 
       value->resize(i32);
-      MutableByteSpan span{reinterpret_cast<std::byte*>(value->data()),
-                           static_cast<PickleSize>(value->size()
-                            * sizeof(typename ContainerType::value_type))};
+      MutableByteSpan span{
+          reinterpret_cast<std::byte*>(value->data()),
+          static_cast<PickleSize>(value->size() * sizeof(typename ContainerType::value_type))};
 
       return UnsizedSpan::ReadFromBuffer(buffer, &span);
     }
@@ -324,32 +314,31 @@ namespace codecs {
 }  // namespace codecs
 
 class Writer {
-public:
-  Writer(buffers::WritableBuffer* buffer): buffer_(buffer) {}
+ public:
+  Writer(buffers::WritableBuffer* buffer) : buffer_(buffer) {}
 
   template <typename Encoder>
   bool Write(typename Encoder::ConstArgType value) {
     return Encoder::WriteToBuffer(buffer_, value);
   }
 
-private:
+ private:
   buffers::WritableBuffer* buffer_;
 };
 
 class Reader {
-public:
-  Reader(buffers::ReadableBuffer* buffer): buffer_(buffer) {}
+ public:
+  Reader(buffers::ReadableBuffer* buffer) : buffer_(buffer) {}
 
   template <typename Decoder>
   bool Read(typename Decoder::ItemType* value) {
     return Decoder::ReadFromBuffer(buffer_, value);
   }
 
-private:
+ private:
   buffers::ReadableBuffer* buffer_;
 };
 
 }  // namespace nickle
-
 
 #endif
