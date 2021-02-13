@@ -284,8 +284,9 @@ namespace codecs {
   template <typename ContainerType>
   struct IntegralContainer : Base<ContainerType, const ContainerType&> {
     static bool WriteToBuffer(buffers::WritableBuffer* buffer, const ContainerType& value) {
-      ConstByteSpan span{reinterpret_cast<const std::byte*>(value.data()),
-                         value.size() * sizeof(typename ContainerType::value_type)};
+      ConstByteSpan span{
+          reinterpret_cast<const std::byte*>(value.data()),
+          static_cast<PickleSize>(value.size() * sizeof(typename ContainerType::value_type))};
 
       return SizedSpanEncoder::WriteToBuffer(buffer, std::move(span));
     }
